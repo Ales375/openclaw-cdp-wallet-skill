@@ -1,6 +1,6 @@
 # openclaw-cdp-wallet-skill
 
-A minimal [Agent Skill](https://agentskills.io) that gives an autonomous AI agent a Coinbase CDP server wallet (v2) and four operations: `address`, `balance`, `send-usdc`, `history`. Base mainnet only. USDC only.
+A minimal [Agent Skill](https://agentskills.io) that gives an autonomous AI agent a Coinbase CDP server wallet (v2) and five operations: `address`, `balance`, `send-usdc`, `history`, and `pay-x402`. Base mainnet by default; supports any EVM network for x402 payments. USDC for direct sends; the resource server's choice for x402 settlements.
 
 Works with [OpenClaw](https://github.com/openclaw/openclaw), [Hermes Agent](https://github.com/NousResearch/hermes-agent), [Claude Code](https://docs.claude.com/en/docs/claude-code), and any runtime that follows the agentskills.io standard.
 
@@ -52,6 +52,9 @@ node src/index.js address                      # 0x...
 node src/index.js balance                      # ETH and USDC on Base
 node src/index.js send-usdc 0xRecipient 1.50   # sends 1.50 USDC, waits for confirmation
 node src/index.js history --limit 20           # last 20 USDC Transfer events
+node src/index.js pay-x402 https://api.example.com/protected \
+  -H "Authorization: Bearer abc123"            # call an x402-protected URL,
+                                               # paying inline with the same wallet
 ```
 
 Every subcommand prints one line of JSON. `ok: true` on success, `ok: false` on failure. Designed to be agent-readable, not pretty-printed.

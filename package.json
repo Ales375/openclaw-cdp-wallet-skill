@@ -1,7 +1,7 @@
 {
   "name": "openclaw-cdp-wallet-skill",
-  "version": "0.1.0",
-  "description": "OpenClaw skill for sending USDC and reading balances on Base via CDP server wallets v2",
+  "version": "0.2.0",
+  "description": "OpenClaw / Hermes / agentskills.io skill: CDP server wallet v2 with USDC sending and x402 client capability on Base",
   "type": "module",
   "main": "src/index.js",
   "bin": {
@@ -25,6 +25,9 @@
   },
   "dependencies": {
     "@coinbase/cdp-sdk": "^1.40.0",
+    "@x402/core": "^2.0.0",
+    "@x402/evm": "^2.0.0",
+    "@x402/fetch": "^2.0.0",
     "bs58": "^6.0.0",
     "commander": "^12.1.0",
     "dotenv": "^16.4.5",

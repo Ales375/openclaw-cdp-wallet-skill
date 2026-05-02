@@ -1,6 +1,6 @@
 ---
 name: cdp-wallet
-description: Send USDC on Base and read balances using a Coinbase CDP server wallet (v2). Use when the operator needs the agent to make USDC payments, donations, or x402 settlements on Base mainnet without managing private keys directly. Wraps the official @coinbase/cdp-sdk into four CLI subcommands — address, balance, send-usdc, history — that an agent can invoke directly. Wallet keys live in Coinbase's TEE infrastructure and are addressed by name, so the same wallet persists across container restarts.
+description: Send USDC on Base, read balances, and pay x402-protected resources using a Coinbase CDP server wallet (v2). Use when the operator needs the agent to make USDC payments, donations, or x402 settlements on Base without managing private keys directly. Wraps the official @coinbase/cdp-sdk into five CLI subcommands — address, balance, send-usdc, history, pay-x402 — that an agent can invoke directly. Wallet keys live in Coinbase's TEE infrastructure and are addressed by name, so the same wallet persists across container restarts. The pay-x402 subcommand handles the full x402 protocol negotiation (HTTP 402 → EIP-712-signed authorization → resubmit) using the same wallet.
 license: MIT
 metadata:
   author: Ales375
@@ -11,13 +11,14 @@ compatibility: Requires Node.js 22+, an internet connection, and three CDP crede
 
 # cdp-wallet
 
-A small wrapper around the [Coinbase CDP server wallet v2 SDK](https://docs.cdp.coinbase.com/server-wallets/v2/introduction/welcome) that exposes the operations an autonomous agent actually needs: get an address, check a balance, send USDC, look at transfer history. Nothing else.
+A small wrapper around the [Coinbase CDP server wallet v2 SDK](https://docs.cdp.coinbase.com/server-wallets/v2/introduction/welcome) that exposes the operations an autonomous agent actually needs: get an address, check a balance, send USDC, look at transfer history, and pay x402-protected resources. Nothing else.
 
 The wallet is a CDP server wallet — keys are generated and held inside AWS Nitro Enclaves on Coinbase's infrastructure, never on the operator's machine, and signing happens by API call against those held keys. The wallet is identified by a human-readable name (`openclaw-default` by default), not a seed phrase, so a fresh container with the same env vars resolves to the same wallet on first call. This is the right shape for unattended scheduled agents on Railway, Fly, Hetzner, etc.
 
 ## When to use
 
-- The agent needs to send USDC on Base (donation, x402 settlement, peer-to-peer payment).
+- The agent needs to send USDC on Base (donation, peer-to-peer payment).
+- The agent needs to pay an x402-protected resource (gated APIs, paid evidence access, agentic-market services).
 - The agent needs to know how much USDC or ETH it has before making a decision.
 - The agent needs to inspect recent USDC activity on its wallet (audit, idempotency check).
 
@@ -180,6 +181,70 @@ Returns the last N USDC Transfer events involving this wallet (in or out), looki
 }
 ```
 
+### `pay-x402 <url>`
+
+```sh
+node src/index.js pay-x402 https://api.example.com/protected
+node src/index.js pay-x402 https://api.example.com/protected -H "Authorization: Bearer abc123"
+node src/index.js pay-x402 https://api.example.com/protected -X POST -d '{"k":"v"}' -H "Content-Type: application/json"
+```
+
+Calls an x402-protected URL. The x402 protocol is an HTTP-native payment scheme: the server returns a 402 with payment requirements, the client signs an EIP-712 authorization, the server's facilitator settles on-chain, the resource is returned. From the agent's perspective, this is one call — the negotiate-sign-resubmit dance happens transparently.
+
+Options:
+
+- `-X, --method <method>` — HTTP method, default `GET`.
+- `-H, --header <name: value>` — request header. Repeat the flag for multiple headers.
+- `-d, --body <body>` — request body string. Only valid with non-GET methods.
+
+Success:
+
+```json
+{
+  "ok": true,
+  "status": 200,
+  "content_type": "application/json",
+  "body": { "...": "the resource" },
+  "body_truncated": false,
+  "settlement": {
+    "transaction": "0xabc...",
+    "amount": "10000",
+    "network": "eip155:8453",
+    "...": "facilitator-defined fields"
+  },
+  "settled_amount_usdc": 0.01
+}
+```
+
+The `settlement` object is the decoded `PAYMENT-RESPONSE` header from the server. `settled_amount_usdc` is a convenience conversion assuming USDC (6 decimals); ignore it if the resource server settled in a different asset.
+
+Body handling:
+
+- If `Content-Type` is `application/json`, the body is parsed and embedded as a JSON object/array.
+- Otherwise the body is returned as a string.
+- If the body exceeds 200,000 characters, it's returned as `{_truncated: true, _length, preview}` and `body_truncated: true`. Increase the limit by editing the skill source if needed.
+
+Failure (server returned non-2xx, or request failed):
+
+```json
+{
+  "ok": false,
+  "error": "x402 endpoint returned 401 Unauthorized",
+  "status": 401,
+  "content_type": "application/json",
+  "body": { "error": "..." },
+  "body_truncated": false,
+  "settlement": null,
+  "settled_amount_usdc": null
+}
+```
+
+Network choice. The x402 protocol is network-aware — the resource server tells the client which network to pay on (e.g., `eip155:8453` for Base mainnet, `eip155:84532` for Base Sepolia). `pay-x402` honours whatever the server requests. The `CDP_NETWORK` env var does NOT constrain `pay-x402`; it only affects `address`, `balance`, `send-usdc`, and `history`. If the operator wants to restrict which networks the agent will pay on, do that at the prompt or persona level, not in the skill.
+
+The signer is the same CDP wallet used by `send-usdc`. The agent's address as `wallet_address` (in zooidfund's case) and the address that signs the x402 payment authorization are the same address — no mismatch risk.
+
+
+
 ## Failure modes the agent should know about
 
 - **Missing env vars** → `ok: false, error: "Missing required env: ..."`. The agent has no recovery path for this; the operator must fix the deployment.
@@ -189,6 +254,9 @@ Returns the last N USDC Transfer events involving this wallet (in or out), looki
 - **OFAC-screened recipient** → CDP refuses to submit. Skip that recipient rather than retry.
 - **`status: "submitted_unconfirmed"`** → tx is on-chain, the CLI just didn't see the receipt within the timeout. Don't re-send; poll `history` or the explorer.
 - **CDP API outage** → transient, retry with backoff.
+- **`pay-x402` returns ok:false with a 402 status** → the x402 client could not satisfy the server's payment requirements (e.g., server requested an unsupported network/scheme, or the wallet lacked funds). Inspect the response body for the server's `accepts` array — that lists what the server would accept. If the agent's wallet can't satisfy any option, give up rather than retry.
+- **`pay-x402` returns ok:false with phase: "request"** → request never completed (network failure, DNS, TLS, malformed URL not caught by upfront validation). Retry once with backoff before giving up.
+- **`pay-x402` succeeds but `settlement` is null** → the resource was returned without a `PAYMENT-RESPONSE` header. This usually means the resource was free (server didn't gate it after all) or the server doesn't echo settlement details on this path. Treat as success.
 
 ## Why CDP server wallets and not other paths
 
