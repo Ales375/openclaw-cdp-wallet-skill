@@ -1,6 +1,6 @@
 {
   "name": "openclaw-cdp-wallet-skill",
-  "version": "0.2.0",
+  "version": "0.2.2",
   "description": "OpenClaw / Hermes / agentskills.io skill: CDP server wallet v2 with USDC sending and x402 client capability on Base",
   "type": "module",
   "main": "src/index.js",
@@ -32,6 +32,9 @@
     "commander": "^12.1.0",
     "dotenv": "^16.4.5",
     "viem": "^2.21.0"
+  },
+  "overrides": {
+    "axios": "^1.16.0"
   },
   "license": "MIT",
   "repository": {

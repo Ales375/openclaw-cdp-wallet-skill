@@ -1,11 +1,44 @@
 ---
 name: cdp-wallet
 description: Send USDC on Base, read balances, and pay x402-protected resources using a Coinbase CDP server wallet (v2). Use when the operator needs the agent to make USDC payments, donations, or x402 settlements on Base without managing private keys directly. Wraps the official @coinbase/cdp-sdk into five CLI subcommands — address, balance, send-usdc, history, pay-x402 — that an agent can invoke directly. Wallet keys live in Coinbase's TEE infrastructure and are addressed by name, so the same wallet persists across container restarts. The pay-x402 subcommand handles the full x402 protocol negotiation (HTTP 402 → EIP-712-signed authorization → resubmit) using the same wallet.
-license: MIT
+version: 0.2.2
+license: MIT-0
 metadata:
   author: Ales375
-  version: "0.1.0"
   source: "https://github.com/Ales375/openclaw-cdp-wallet-skill"
+  openclaw:
+    homepage: "https://github.com/Ales375/openclaw-cdp-wallet-skill"
+    requires:
+      bins:
+        - node
+        - npm
+      env:
+        - CDP_API_KEY_ID
+        - CDP_API_KEY_SECRET
+        - CDP_WALLET_SECRET
+    primaryEnv: CDP_WALLET_SECRET
+    env:
+      - name: CDP_API_KEY_ID
+        description: "Coinbase CDP API key ID for server wallet access."
+        required: true
+        sensitive: true
+      - name: CDP_API_KEY_SECRET
+        description: "Coinbase CDP API key secret paired with CDP_API_KEY_ID."
+        required: true
+        sensitive: true
+      - name: CDP_WALLET_SECRET
+        description: "Coinbase CDP wallet secret used to authorize signing operations."
+        required: true
+        sensitive: true
+      - name: CDP_NETWORK
+        description: "Target EVM network for address, balance, send-usdc, and history. Defaults to base."
+        required: false
+      - name: CDP_ACCOUNT_NAME
+        description: "Human-readable CDP account name. Reusing the same name resolves to the same wallet."
+        required: false
+      - name: BASE_RPC_URL
+        description: "Optional override for the Base RPC URL used for on-chain reads and receipt polling."
+        required: false
 compatibility: Requires Node.js 22+, an internet connection, and three CDP credentials (CDP_API_KEY_ID, CDP_API_KEY_SECRET, CDP_WALLET_SECRET) set in the environment.
 ---
 
@@ -266,6 +299,7 @@ The skill deliberately does not enforce per-transaction limits, daily caps, or w
 
 ## Security notes
 
+- Use a dedicated OpenClaw agent or workspace for this skill. Do not share one funded wallet across unrelated agents or tenants.
 - The Wallet Secret is the most sensitive credential; protect it with the same care as a private key. Anyone with all three env vars can move the wallet's funds.
 - This skill prints the wallet address but never the keys (the SDK doesn't expose them).
 - Output JSON includes addresses, amounts, and tx hashes only — no secrets are logged.

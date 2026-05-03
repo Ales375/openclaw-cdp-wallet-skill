@@ -492,7 +492,7 @@ program
   .description(
     "Minimal CDP server wallet v2 CLI for OpenClaw / Hermes / any agentskills.io runtime.",
   )
-  .version("0.2.0");
+  .version("0.2.2");
 
 program
   .command("address")

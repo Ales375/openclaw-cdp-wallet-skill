@@ -1,0 +1,8 @@
+.git/
+node_modules/
+.env
+.env.local
+.env.*.local
+LICENSE
+README.md
+package-lock.json
